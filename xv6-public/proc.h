@@ -1,3 +1,4 @@
+#include "psched.h"
 // Per-CPU state
 struct cpu {
   uchar apicid;                // Local APIC ID
@@ -32,6 +33,9 @@ struct context {
   uint eip;
 };
 
+int nice(int n); 
+int getschedstate(struct pschedinfo *);
+
 enum procstate { UNUSED, EMBRYO, SLEEPING, RUNNABLE, RUNNING, ZOMBIE };
 
 // Per-process state
@@ -49,6 +53,13 @@ struct proc {
   struct file *ofile[NOFILE];  // Open files
   struct inode *cwd;           // Current directory
   char name[16];               // Process name (debugging)
+  int sleeping;                // used to tell if the current process is sleeping
+  int nice; 
+  int priority; 
+  int ticks; 
+  int running;
+  int cpu; 
+  int curr_ticks; 
 };
 
 // Process memory is laid out contiguously, low addresses first:

@@ -6,6 +6,7 @@
 #include "memlayout.h"
 #include "mmu.h"
 #include "proc.h"
+#include "psched.h"
 
 int
 sys_fork(void)
@@ -79,6 +80,7 @@ sys_sleep(void)
 
 // return how many clock tick interrupts have occurred
 // since start.
+//TODO: this may come in handy
 int
 sys_uptime(void)
 {
@@ -88,4 +90,25 @@ sys_uptime(void)
   xticks = ticks;
   release(&tickslock);
   return xticks;
+}
+
+int sys_nice(void){
+  // need to get the arument from the userspace, add it to the current processes nice value 
+  int n; 
+  if (argint(0, &n) < 0){
+    return -1;
+  }
+  return nice(n);
+}
+
+
+int sys_getschedstate(void){
+  // need to pull in the struct from the user space
+  struct pschedinfo *curr_sched;
+  if (argptr(0, (void*)&curr_sched, sizeof(*curr_sched)) < 0 || curr_sched == 0){
+    return -1;
+  }
+
+  return getschedstate(curr_sched);
+
 }

@@ -1,5 +1,6 @@
 struct stat;
 struct rtcdate;
+#include "psched.h"
 
 // system calls
 int fork(void);
@@ -23,6 +24,8 @@ int getpid(void);
 char* sbrk(int);
 int sleep(int);
 int uptime(void);
+int getschedstate(struct pschedinfo *); 
+int nice(int n); 
 
 // ulib.c
 int stat(const char*, struct stat*);
