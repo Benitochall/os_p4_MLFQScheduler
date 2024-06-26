@@ -45,13 +45,13 @@ trap(struct trapframe *tf)
       exit();
     return;
   }
-
+// TODO: this is the timer interupt on this we need to update all processes cpu time, and then schedule the next process based on lowest priority 
   switch(tf->trapno){
   case T_IRQ0 + IRQ_TIMER:
     if(cpuid() == 0){
       acquire(&tickslock);
       ticks++;
-      wakeup(&ticks);
+      wakeup(&ticks);// calls the wakeup fucntions
       release(&tickslock);
     }
     lapiceoi();

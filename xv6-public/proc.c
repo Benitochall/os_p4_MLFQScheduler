@@ -6,11 +6,14 @@
 #include "x86.h"
 #include "proc.h"
 #include "spinlock.h"
+#include "psched.h"
 
 struct {
   struct spinlock lock;
   struct proc proc[NPROC];
 } ptable;
+
+struct pschedinfo scheduler_info; // here is my globally declared struct
 
 static struct proc *initproc;
 
@@ -149,6 +152,13 @@ userinit(void)
   acquire(&ptable.lock);
 
   p->state = RUNNABLE;
+  // need to add shell to table TODO
+  p->nice = 0; 
+  p->priority = 0; 
+  p->ticks = 0; 
+  p->running =1;
+  p->cpu = 0; 
+  p->curr_ticks =0; 
 
   release(&ptable.lock);
 }
@@ -180,6 +190,7 @@ growproc(int n)
 int
 fork(void)
 {
+  // this is where we create a new process
   int i, pid;
   struct proc *np;
   struct proc *curproc = myproc();
@@ -215,11 +226,23 @@ fork(void)
   acquire(&ptable.lock);
 
   np->state = RUNNABLE;
+  // after setting state to runable 
+  // need to set up the proctable 
+  // need to find the next empty process 
+  np->nice = 0; 
+  np->priority = 0; 
+  np->ticks = 0; 
+  np->running =1;
+  np->cpu =0; 
+  np->curr_ticks =0; 
+  
 
   release(&ptable.lock);
 
   return pid;
 }
+  
+
 
 // Exit the current process.  Does not return.
 // An exited process remains in the zombie state
@@ -263,6 +286,11 @@ exit(void)
 
   // Jump into the scheduler, never to return.
   curproc->state = ZOMBIE;
+  // curproc->nice =0;
+  // curproc->priority =0; 
+  // curproc->ticks =0; 
+  // curproc->running =0; 
+
   sched();
   panic("zombie exit");
 }
@@ -319,38 +347,66 @@ wait(void)
 //  - swtch to start running that process
 //  - eventually that process transfers control
 //      via swtch back to the scheduler.
+// should be called every 10ms
 void
 scheduler(void)
 {
   struct proc *p;
   struct cpu *c = mycpu();
+  struct proc *lowPrior = 0;
+  int lowest_priority = 200; // sets lowest priority to max 
   c->proc = 0;
   
   for(;;){
-    // Enable interrupts on this processor.
-    sti();
+    if (ticks%100 == 0) {
+   for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
+        if (p->curr_ticks != ticks){
 
-    // Loop over process table looking for process to run.
+        p->cpu = p->cpu/2; 
+        p->priority = (p->cpu / 2) + p->nice;
+        p->curr_ticks = ticks; 
+        }
+    }
+  }
+	lowest_priority = 10000;
+    sti();
     acquire(&ptable.lock);
     for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
+      // check if the process is runable
       if(p->state != RUNNABLE)
         continue;
+      // find the lowest priority process
+      if (p->priority < lowest_priority) {
+        lowest_priority = p->priority;
+        lowPrior = p;
+      }
+      //cprintf("%d, %d, %d ,%d\n", ticks, p->pid, p->ticks, p->priority);
+      if (lowPrior && lowPrior->state != ZOMBIE){
+	   // cprintf("we found a low priority process called %s\n", lowPrior->name); 
+    
+      c->proc = lowPrior;
+      uint ticks_before = ticks;
+      switchuvm(lowPrior);
+      lowPrior->state = RUNNING;
+      lowPrior->running = 1; 
 
-      // Switch to chosen process.  It is the process's job
-      // to release ptable.lock and then reacquire it
-      // before jumping back to us.
-      c->proc = p;
-      switchuvm(p);
-      p->state = RUNNING;
-
-      swtch(&(c->scheduler), p->context);
+      swtch(&(c->scheduler), lowPrior->context);
       switchkvm();
+      // cprintf("we back \n");
+
+      uint ticks_after = ticks;
+      uint ticks_used = ticks_after - ticks_before;
+      lowPrior->ticks += ticks_used; 
+      lowPrior->cpu += ticks_used; 
 
       // Process is done running for now.
       // It should have changed its p->state before coming back.
-      c->proc = 0;
     }
-    release(&ptable.lock);
+      lowPrior =0; 
+    }
+
+      c->proc = 0;
+      release(&ptable.lock);
 
   }
 }
@@ -460,7 +516,7 @@ wakeup1(void *chan)
   struct proc *p;
 
   for(p = ptable.proc; p < &ptable.proc[NPROC]; p++)
-    if(p->state == SLEEPING && p->chan == chan)
+    if(p->state == SLEEPING && p->chan == chan &&  ticks >= p->sleeping)
       p->state = RUNNABLE;
 }
 
@@ -531,4 +587,31 @@ procdump(void)
     }
     cprintf("\n");
   }
+}
+
+int nice(int n){
+	 
+  if (n < 0 || n > 20){
+    return -1;
+  }
+  int curr_nice = myproc()->nice;
+  // need to set myproc() nice value
+  myproc()->nice = n;
+	return curr_nice; 
+}
+
+int getschedstate(struct pschedinfo * sched){
+  struct proc *p;
+
+  for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
+      // the current process is in use
+      sched->inuse[p-ptable.proc] = p->running; 
+      sched->pid[p-ptable.proc] = p->pid; 
+      sched->priority[p-ptable.proc] = p->priority; 
+      sched->nice[p-ptable.proc] = p->nice; 
+      sched->ticks[p-ptable.proc] = p->ticks; 
+    }
+
+  return 0; 
+
 }
